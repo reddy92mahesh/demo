@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 df = pd.read_csv('Titanic_test.csv')
 df = pd.read_csv('Titanic_train.csv')
 
-st.title("🚢 Titanic Survival Prediction - Logistic Regression")
+st.title("Titanic Survival Prediction - Logistic Regression")
 
 st.subheader("Sample Data")
 st.write(df.head())
@@ -99,7 +99,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 
 y_pred = model.predict(X_test_scaled)
 
-st.subheader("📊 Model Performance")
+st.subheader("Model Performance")
 st.write("Accuracy:", accuracy_score(y_test, y_pred))
 st.write("Precision:", precision_score(y_test, y_pred))
 st.write("Recall:", recall_score(y_test, y_pred))
