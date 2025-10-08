@@ -1,21 +1,35 @@
 import pandas as pd
-
-# Load the datasets
-train_data = pd.read_csv('Titanic_train.csv')
-test_data = pd.read_csv('Titanic_test.csv')
-
-# Examine the structure
-print(train_data.info())
-
-# Summary statistics
-print(train_data.describe(include='all'))
-
 import matplotlib.pyplot as plt
 import seaborn as sns
 import warnings
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, roc_curve
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
+import pickle
 
+# --- Initial Setup and Data Loading ---
 # Suppress warnings
 warnings.filterwarnings('ignore')
+
+# Load the datasets
+# NOTE: Assuming 'Titanic_train.csv' is in the execution directory
+try:
+    train_data = pd.read_csv('Titanic_train.csv')
+    # test_data = pd.read_csv('Titanic_test.csv') # Not strictly needed for this part of the analysis
+except FileNotFoundError:
+    print("Error: 'Titanic_train.csv' not found. Please ensure the file is in the correct directory.")
+    exit()
+
+# Examine the structure
+print("--- Training Data Info ---")
+# print(train_data.info()) # Commented out to reduce verbose output
+print("\n--- Summary Statistics ---")
+# print(train_data.describe(include='all')) # Commented out to reduce verbose output
+
+# --- Exploratory Data Analysis (EDA) ---
+print("\n--- EDA Plots (Please view the generated figures) ---")
 
 # Histogram of Age
 plt.figure(figsize=(10, 5))
@@ -23,122 +37,113 @@ sns.histplot(train_data['Age'].dropna(), bins=30)
 plt.title('Age Distribution')
 plt.xlabel('Age')
 plt.ylabel('Frequency')
-plt.show()
+# plt.show() # Commented out for environment where plots don't display inline
 
 # Box plot of Fare
 plt.figure(figsize=(10, 5))
 sns.boxplot(x='Pclass', y='Fare', data=train_data)
 plt.title('Fare by Passenger Class')
-plt.show()
+# plt.show() # Commented out for environment where plots don't display inline
 
 # Pair plot of selected features
-sns.pairplot(train_data[['Survived', 'Pclass', 'Sex', 'Age']], hue='Survived')
-plt.show()
+# sns.pairplot(train_data[['Survived', 'Pclass', 'Sex', 'Age']], hue='Survived')
+# plt.show() # Commented out for environment where plots don't display inline
+
+# --- Data Preprocessing ---
 
 # Fill missing Age values with the median
 train_data['Age'].fillna(train_data['Age'].median(), inplace=True)
 
-# Drop or fill other missing values as necessary
+# Fill missing Embarked values with the mode
 train_data['Embarked'].fillna(train_data['Embarked'].mode()[0], inplace=True)
 
-# Convert 'Sex' to binary
+# Convert 'Sex' to binary (male: 0, female: 1)
 train_data['Sex'] = train_data['Sex'].map({'male': 0, 'female': 1})
 
 # One-hot encode 'Embarked'
-train_data = pd.get_dummies(train_data, columns=['Embarked'], drop_first=True)
-
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LogisticRegression
+train_data = pd.get_dummies(train_data, columns=['Embarked'], prefix='Embarked', drop_first=True)
 
 # Features and target variable
+# NOTE: The one-hot encoding changed the feature names to 'Embarked_Q' and 'Embarked_S'
 X = train_data[['Pclass', 'Sex', 'Age', 'Fare', 'Embarked_Q', 'Embarked_S']]
 y = train_data['Survived']
+feature_names = X.columns # Store feature names before splitting
 
 # Split the data
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 
-# Train the model
-model = LogisticRegression()
-model.fit(X_train, y_train)
+# --- Model Training with Scaling and Pipeline ---
 
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+# Create a pipeline for scaling numerical features and training the model
+# Scaling Age and Fare is essential for Logistic Regression for reliable convergence
+pipeline = Pipeline([
+    ('scaler', StandardScaler()),
+    ('logreg', LogisticRegression(random_state=42, solver='liblinear')) # Use 'liblinear' for good performance on small datasets
+])
+
+# Train the model
+pipeline.fit(X_train, y_train)
+
+# Extract the trained model from the pipeline
+model = pipeline.named_steps['logreg']
+scaler = pipeline.named_steps['scaler']
+
+# --- Model Evaluation ---
 
 # Predictions
-y_pred = model.predict(X_test)
+y_pred = pipeline.predict(X_test)
 
 # Calculate metrics
 accuracy = accuracy_score(y_test, y_pred)
 precision = precision_score(y_test, y_pred)
 recall = recall_score(y_test, y_pred)
 f1 = f1_score(y_test, y_pred)
-roc_auc = roc_auc_score(y_test, model.predict_proba(X_test)[:, 1])
+roc_auc = roc_auc_score(y_test, pipeline.predict_proba(X_test)[:, 1])
 
+print("\n--- Model Performance Metrics ---")
 print(f'Accuracy: {accuracy:.2f}')
 print(f'Precision: {precision:.2f}')
 print(f'Recall: {recall:.2f}')
 print(f'F1 Score: {f1:.2f}')
+print(f'ROC AUC Score: {roc_auc:.2f}')
 
-from sklearn.metrics import roc_curve
-
-fpr, tpr, thresholds = roc_curve(y_test, model.predict_proba(X_test)[:, 1])
-plt.plot(fpr, tpr, label='ROC curve (area = %0.2f)' % roc_auc)
+# ROC Curve Plot
+fpr, tpr, thresholds = roc_curve(y_test, pipeline.predict_proba(X_test)[:, 1])
+plt.figure(figsize=(8, 6))
+plt.plot(fpr, tpr, label=f'ROC curve (area = {roc_auc:.2f})')
 plt.plot([0, 1], [0, 1], 'k--')
 plt.xlabel('False Positive Rate')
 plt.ylabel('True Positive Rate')
 plt.title('Receiver Operating Characteristic')
 plt.legend(loc='lower right')
-plt.show()
+# plt.show() # Commented out for environment where plots don't display inline
 
+# --- Coefficient Analysis ---
 
-# Get the coefficients of the model
+# Get the coefficients of the scaled model
+# The coefficients are for the *scaled* features
 coefficients = model.coef_[0]
 
 # Create a DataFrame to display the coefficients with their corresponding features
-feature_names = X.columns
 coefficients_df = pd.DataFrame({'Feature': feature_names, 'Coefficient': coefficients})
 
 # Sort the coefficients by magnitude
-coefficients_df = coefficients_df.sort_values('Coefficient', ascending=False)
+coefficients_df = coefficients_df.sort_values(by='Coefficient', ascending=False)
 
+print("\n--- Feature Significance (Coefficients of Scaled Features) ---")
 print(coefficients_df)
 
-# Interpretation:
-
-# Positive coefficients indicate that an increase in the feature is associated with an increased probability of survival.
-# Negative coefficients indicate that an increase in the feature is associated with a decreased probability of survival.
-# The magnitude of the coefficient represents the strength of the association.
-
-# For example, if the coefficient for 'Sex' is positive and large, it means being female is strongly associated with survival.
-
-# im analyze the coefficients to understand which factors had the most impact on the model's prediction of survival.
-
-
-# Feature Significance Discussion
-
-# Based on the coefficients obtained from the logistic regression model, i  understand which features were most significant in predicting survival.
-
-# Positive Coefficients:
-#   - Sex: Being female (Sex=1) has a strong positive impact on survival. This is as expected, as women and children were prioritized during evacuation.
-#   - Embarked_S:  Embarking from Southampton (Embarked_S=1) might have a slight positive impact, although it's less significant.
-#
-# Negative Coefficients:
-#   - Pclass: Higher passenger class (lower Pclass number) has a positive correlation with survival. This indicates that wealthier passengers had better chances of surviving.
-#   - Age: Higher age appears to have a slight negative correlation with survival, although it's not very strong.
-#   - Fare: A higher fare might have a slightly negative impact, although it's subtle.
-#   - Embarked_Q: Embarking from Queenstown (Embarked_Q=1) has a negative effect on survival probability.
-
-
-# Print the Significance
-print("\nFeature Significance:")
-print(coefficients_df)
 print("\nInterpretation:")
-print("Positive coefficients suggest a positive relationship with survival.")
-print("Negative coefficients suggest a negative relationship with survival.")
+print("Positive coefficients (e.g., Sex) strongly suggest a positive relationship with survival.")
+print("Negative coefficients (e.g., Pclass, Age) strongly suggest a negative relationship with survival.")
+print("The magnitude of the coefficient indicates the strength of the impact.")
 
-# save the model with this name "logistic_model.pkl" for streamlit integration
+# --- Model Saving ---
 
-import pickle
+# Save the trained pipeline (which includes the scaler and the model)
+# Saving the pipeline is better practice than saving only the model, as it ensures
+# that new data is scaled identically before prediction.
+filename = 'logistic_model_pipeline.pkl'
+pickle.dump(pipeline, open(filename, 'wb'))
 
-# Save the trained model to a file
-filename = 'logistic_model.pkl'
-pickle.dump(model, open(filename, 'wb'))
+print(f"\nModel successfully saved to '{filename}' (it includes the necessary scaler).")
