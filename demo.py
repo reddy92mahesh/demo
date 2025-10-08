@@ -1,105 +1,134 @@
+# ---
+# jupyter:
+#   jupytext:
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.17.3
+#   kernelspec:
+#     display_name: Python 3 (ipykernel)
+#     language: python
+#     name: python3
+# ---
+
+## 1: Load your dataset and explore
+
 import streamlit as st
 import pandas as pd
-import pickle
+import matplotlib.pyplot as plt
 
-# --- 1. Load the Trained Model ---
-# This section is the most crucial for app startup.
-# We use try-except to handle the case where the model file is missing.
-try:
-    # Load the trained model. Ensure 'logistic_model.pkl' is in the same directory.
-    model = pickle.load(open('logistic_model.pkl', 'rb'))
-except FileNotFoundError:
-    st.error("Error: Model file 'logistic_model.pkl' not found.")
-    st.markdown("Please ensure the trained model is saved as `logistic_model.pkl` and uploaded to the deployment server.")
-    st.stop() # Stop the app execution if the model cannot be loaded
+# Load data
+df = pd.read_csv('Titanic_test.csv')
+df = pd.read_csv('Titanic_train.csv')
 
-# --- 2. Streamlit App Layout ---
-st.set_page_config(page_title="Titanic Survival Predictor", layout="centered")
-st.title('🚢 Titanic Survival Prediction')
-st.markdown('Use the inputs below to predict if a passenger would have survived the sinking of the Titanic, based on a Logistic Regression model.')
+st.title("Titanic Survival Prediction - Logistic Regression")
 
-st.header('Enter Passenger Details')
+st.subheader("Sample Data")
+st.write(df.head())
 
-# --- 3. User Input Fields ---
-# Input features based on the model training: Pclass, Sex, Age, Fare, Embarked_Q, Embarked_S
+## 2: Explore features and statistics
 
-# Pclass (Passenger Class)
-pclass = st.selectbox(
-    'Passenger Class',
-    options=[1, 2, 3],
-    format_func=lambda x: f"{x} (Class)"
-)
+# Show column names and their data types
+st.subheader("Data Info")
+st.text(str(df.info()))
 
-# Sex
-sex = st.radio(
-    'Sex',
-    options=['Male', 'Female']
-)
+# Show basic statistics (mean, std, min, max, etc.)
+st.subheader("Summary Statistics")
+st.write(df.describe())
 
-# Age
-age = st.slider(
-    'Age',
-    min_value=0,
-    max_value=80,
-    value=25,
-    step=1
-)
+# Check for missing values
+st.subheader("Missing Values")
+st.write(df.isnull().sum())
 
-# Fare
-fare = st.number_input(
-    'Fare (Ticket Price in $)',
-    min_value=0.0,
-    value=30.0,
-    step=0.5
-)
+# If we want to visualize feature distributions
+st.subheader("Feature Distributions")
+fig, ax = plt.subplots(figsize=(10, 8))
+df.hist(ax=ax)
+st.pyplot(fig)
 
-st.subheader('Port of Embarkation')
-st.caption("Select the port(s) from which the passenger embarked. Cherbourg (C) is the baseline.")
+# Checking the features and their types, if there are missing values
+st.subheader("Data Types & Summary")
+st.text(str(df.info()))
+st.write(df.describe())
 
-# Embarked (One-Hot Encoded: Embarked_Q, Embarked_S)
-col1, col2 = st.columns(2)
-with col1:
-    embarked_q = st.checkbox('Queenstown (Q)')
-with col2:
-    embarked_s = st.checkbox('Southampton (S)')
+# Identify missing values again
+st.subheader("Missing Values Check")
+st.write(df.isnull().sum())
 
+# Display column names
+st.subheader("Columns")
+st.write(df.columns)
 
-# --- 4. Prediction Logic ---
-if st.button('Predict Survival'):
-    
-    # 1. Convert categorical inputs to the model's expected numeric format
-    # Sex: 'male': 0, 'female': 1 (as per the notebook preprocessing)
-    sex_encoded = 1 if sex == 'Female' else 0
+# Plot histograms for all features
+st.subheader("Histograms (All Features)")
+fig, ax = plt.subplots(figsize=(10, 8))
+df.hist(ax=ax)
+st.pyplot(fig)
 
-    # 2. Create a DataFrame with the correct features and order
-    # The feature order MUST match the order used during training: 
-    # ['Pclass', 'Sex', 'Age', 'Fare', 'Embarked_Q', 'Embarked_S']
-    input_data = pd.DataFrame({
-        'Pclass': [pclass],
-        'Sex': [sex_encoded],
-        'Age': [age],
-        'Fare': [fare],
-        'Embarked_Q': [1 if embarked_q else 0],
-        'Embarked_S': [1 if embarked_s else 0]
-    })
-    
-    # Optional: Display the processed input data for debugging
-    # st.write("Model Input:", input_data) 
+## Step 3: Data Preprocessing
 
-    # 3. Make Prediction
-    prediction = model.predict(input_data)[0]
-    # Get probability of survival (class 1)
-    prediction_proba = model.predict_proba(input_data)[0][1] 
+# a. Handle missing values
+df = df.fillna(df.mean(numeric_only=True))
 
-    # 4. Display the result
-    st.subheader('Result')
-    if prediction == 1:
-        st.balloons()
-        st.success(f'**✅ Prediction: Passenger is likely to survive!**')
-        st.progress(prediction_proba, text=f"Survival Probability: {prediction_proba:.2f}")
-    else:
-        st.error(f'**❌ Prediction: Passenger is likely to not survive.**')
-        st.progress(prediction_proba, text=f"Survival Probability: {prediction_proba:.2f}")
+# b. Encode categorical variables
+df = pd.get_dummies(df, drop_first=True)
 
-st.markdown("---")
-st.caption("Disclaimer: This is a prediction based on a simplified Logistic Regression model. It does not guarantee accuracy.")
+# Model building
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+
+# Assuming 'Survived' is your target variable
+X = df.drop(columns=['Survived'])
+y = df['Survived']
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Scaling
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# Train model
+model = LogisticRegression(max_iter=1000)
+model.fit(X_train_scaled, y_train)
+
+# Evaluate
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, classification_report
+
+y_pred = model.predict(X_test_scaled)
+
+st.subheader("Model Performance")
+st.write("Accuracy:", accuracy_score(y_test, y_pred))
+st.write("Precision:", precision_score(y_test, y_pred))
+st.write("Recall:", recall_score(y_test, y_pred))
+st.write("F1 Score:", f1_score(y_test, y_pred))
+st.write("ROC-AUC Score:", roc_auc_score(y_test, y_pred))
+
+st.text("Classification Report:\n" + classification_report(y_test, y_pred))
+
+# ROC Curve
+from sklearn.metrics import roc_curve
+y_pred_prob = model.predict_proba(X_test_scaled)[:, 1]
+fpr, tpr, thresholds = roc_curve(y_test, y_pred_prob)
+
+st.subheader("ROC Curve")
+fig, ax = plt.subplots()
+ax.plot(fpr, tpr)
+ax.set_xlabel("False Positive Rate")
+ax.set_ylabel("True Positive Rate")
+ax.set_title("ROC Curve")
+st.pyplot(fig)
+
+## Notes Section
+st.subheader("Notes")
+st.markdown("""
+**1. Precision vs Recall**  
+- Precision: Of the items predicted as “positive,” how many were actually positive?  
+- Recall: Of all the actual positives, how many did the model successfully catch?  
+
+**2. Cross-Validation**  
+It’s a way to test a model multiple times by training on one part of the data and validating on another part, rotating these parts each time.  
+Why it matters: It gives a more reliable performance estimate and helps prevent overfitting.
+""")
