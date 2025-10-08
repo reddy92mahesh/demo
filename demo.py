@@ -1,134 +1,144 @@
-# ---
-# jupyter:
-#   jupytext:
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.17.3
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
-## 1: Load your dataset and explore
-
-import streamlit as st
 import pandas as pd
+
+# Load the datasets
+train_data = pd.read_csv('Titanic_train.csv')
+test_data = pd.read_csv('Titanic_test.csv')
+
+# Examine the structure
+print(train_data.info())
+
+# Summary statistics
+print(train_data.describe(include='all'))
+
 import matplotlib.pyplot as plt
+import seaborn as sns
+import warnings
 
-# Load data
-df = pd.read_csv('Titanic_test.csv')
-df = pd.read_csv('Titanic_train.csv')
+# Suppress warnings
+warnings.filterwarnings('ignore')
 
-st.title("Titanic Survival Prediction - Logistic Regression")
+# Histogram of Age
+plt.figure(figsize=(10, 5))
+sns.histplot(train_data['Age'].dropna(), bins=30)
+plt.title('Age Distribution')
+plt.xlabel('Age')
+plt.ylabel('Frequency')
+plt.show()
 
-st.subheader("Sample Data")
-st.write(df.head())
+# Box plot of Fare
+plt.figure(figsize=(10, 5))
+sns.boxplot(x='Pclass', y='Fare', data=train_data)
+plt.title('Fare by Passenger Class')
+plt.show()
 
-## 2: Explore features and statistics
+# Pair plot of selected features
+sns.pairplot(train_data[['Survived', 'Pclass', 'Sex', 'Age']], hue='Survived')
+plt.show()
 
-# Show column names and their data types
-st.subheader("Data Info")
-st.text(str(df.info()))
+# Fill missing Age values with the median
+train_data['Age'].fillna(train_data['Age'].median(), inplace=True)
 
-# Show basic statistics (mean, std, min, max, etc.)
-st.subheader("Summary Statistics")
-st.write(df.describe())
+# Drop or fill other missing values as necessary
+train_data['Embarked'].fillna(train_data['Embarked'].mode()[0], inplace=True)
 
-# Check for missing values
-st.subheader("Missing Values")
-st.write(df.isnull().sum())
+# Convert 'Sex' to binary
+train_data['Sex'] = train_data['Sex'].map({'male': 0, 'female': 1})
 
-# If we want to visualize feature distributions
-st.subheader("Feature Distributions")
-fig, ax = plt.subplots(figsize=(10, 8))
-df.hist(ax=ax)
-st.pyplot(fig)
+# One-hot encode 'Embarked'
+train_data = pd.get_dummies(train_data, columns=['Embarked'], drop_first=True)
 
-# Checking the features and their types, if there are missing values
-st.subheader("Data Types & Summary")
-st.text(str(df.info()))
-st.write(df.describe())
-
-# Identify missing values again
-st.subheader("Missing Values Check")
-st.write(df.isnull().sum())
-
-# Display column names
-st.subheader("Columns")
-st.write(df.columns)
-
-# Plot histograms for all features
-st.subheader("Histograms (All Features)")
-fig, ax = plt.subplots(figsize=(10, 8))
-df.hist(ax=ax)
-st.pyplot(fig)
-
-## Step 3: Data Preprocessing
-
-# a. Handle missing values
-df = df.fillna(df.mean(numeric_only=True))
-
-# b. Encode categorical variables
-df = pd.get_dummies(df, drop_first=True)
-
-# Model building
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 
-# Assuming 'Survived' is your target variable
-X = df.drop(columns=['Survived'])
-y = df['Survived']
+# Features and target variable
+X = train_data[['Pclass', 'Sex', 'Age', 'Fare', 'Embarked_Q', 'Embarked_S']]
+y = train_data['Survived']
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+# Split the data
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 
-# Scaling
-scaler = StandardScaler()
-X_train_scaled = scaler.fit_transform(X_train)
-X_test_scaled = scaler.transform(X_test)
+# Train the model
+model = LogisticRegression()
+model.fit(X_train, y_train)
 
-# Train model
-model = LogisticRegression(max_iter=1000)
-model.fit(X_train_scaled, y_train)
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 
-# Evaluate
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, classification_report
+# Predictions
+y_pred = model.predict(X_test)
 
-y_pred = model.predict(X_test_scaled)
+# Calculate metrics
+accuracy = accuracy_score(y_test, y_pred)
+precision = precision_score(y_test, y_pred)
+recall = recall_score(y_test, y_pred)
+f1 = f1_score(y_test, y_pred)
+roc_auc = roc_auc_score(y_test, model.predict_proba(X_test)[:, 1])
 
-st.subheader("Model Performance")
-st.write("Accuracy:", accuracy_score(y_test, y_pred))
-st.write("Precision:", precision_score(y_test, y_pred))
-st.write("Recall:", recall_score(y_test, y_pred))
-st.write("F1 Score:", f1_score(y_test, y_pred))
-st.write("ROC-AUC Score:", roc_auc_score(y_test, y_pred))
+print(f'Accuracy: {accuracy:.2f}')
+print(f'Precision: {precision:.2f}')
+print(f'Recall: {recall:.2f}')
+print(f'F1 Score: {f1:.2f}')
 
-st.text("Classification Report:\n" + classification_report(y_test, y_pred))
-
-# ROC Curve
 from sklearn.metrics import roc_curve
-y_pred_prob = model.predict_proba(X_test_scaled)[:, 1]
-fpr, tpr, thresholds = roc_curve(y_test, y_pred_prob)
 
-st.subheader("ROC Curve")
-fig, ax = plt.subplots()
-ax.plot(fpr, tpr)
-ax.set_xlabel("False Positive Rate")
-ax.set_ylabel("True Positive Rate")
-ax.set_title("ROC Curve")
-st.pyplot(fig)
+fpr, tpr, thresholds = roc_curve(y_test, model.predict_proba(X_test)[:, 1])
+plt.plot(fpr, tpr, label='ROC curve (area = %0.2f)' % roc_auc)
+plt.plot([0, 1], [0, 1], 'k--')
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver Operating Characteristic')
+plt.legend(loc='lower right')
+plt.show()
 
-## Notes Section
-st.subheader("Notes")
-st.markdown("""
-**1. Precision vs Recall**  
-- Precision: Of the items predicted as “positive,” how many were actually positive?  
-- Recall: Of all the actual positives, how many did the model successfully catch?  
 
-**2. Cross-Validation**  
-It’s a way to test a model multiple times by training on one part of the data and validating on another part, rotating these parts each time.  
-Why it matters: It gives a more reliable performance estimate and helps prevent overfitting.
-""")
+# Get the coefficients of the model
+coefficients = model.coef_[0]
+
+# Create a DataFrame to display the coefficients with their corresponding features
+feature_names = X.columns
+coefficients_df = pd.DataFrame({'Feature': feature_names, 'Coefficient': coefficients})
+
+# Sort the coefficients by magnitude
+coefficients_df = coefficients_df.sort_values('Coefficient', ascending=False)
+
+print(coefficients_df)
+
+# Interpretation:
+
+# Positive coefficients indicate that an increase in the feature is associated with an increased probability of survival.
+# Negative coefficients indicate that an increase in the feature is associated with a decreased probability of survival.
+# The magnitude of the coefficient represents the strength of the association.
+
+# For example, if the coefficient for 'Sex' is positive and large, it means being female is strongly associated with survival.
+
+# im analyze the coefficients to understand which factors had the most impact on the model's prediction of survival.
+
+
+# Feature Significance Discussion
+
+# Based on the coefficients obtained from the logistic regression model, i  understand which features were most significant in predicting survival.
+
+# Positive Coefficients:
+#   - Sex: Being female (Sex=1) has a strong positive impact on survival. This is as expected, as women and children were prioritized during evacuation.
+#   - Embarked_S:  Embarking from Southampton (Embarked_S=1) might have a slight positive impact, although it's less significant.
+#
+# Negative Coefficients:
+#   - Pclass: Higher passenger class (lower Pclass number) has a positive correlation with survival. This indicates that wealthier passengers had better chances of surviving.
+#   - Age: Higher age appears to have a slight negative correlation with survival, although it's not very strong.
+#   - Fare: A higher fare might have a slightly negative impact, although it's subtle.
+#   - Embarked_Q: Embarking from Queenstown (Embarked_Q=1) has a negative effect on survival probability.
+
+
+# Print the Significance
+print("\nFeature Significance:")
+print(coefficients_df)
+print("\nInterpretation:")
+print("Positive coefficients suggest a positive relationship with survival.")
+print("Negative coefficients suggest a negative relationship with survival.")
+
+# save the model with this name "logistic_model.pkl" for streamlit integration
+
+import pickle
+
+# Save the trained model to a file
+filename = 'logistic_model.pkl'
+pickle.dump(model, open(filename, 'wb'))
